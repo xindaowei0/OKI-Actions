@@ -46,7 +46,7 @@ on:
           - 'onrplus_nord_4'
           - 'oneplus_nord_ce4_lite_5g'
           - 'oneplus_nord_ce4'
-        default: 'oneplus_12'
+        default: 'oneplus_13r'
         
       ANDROID_VERSION:
         description: "KMI安卓版本"
@@ -75,7 +75,7 @@ on:
        options:
            - 'On'
            - 'Off'
-       default: 'Off'
+       default: 'On'
        
       lz4kd:
        description: "是否启用lz4kd(关闭则6.1系启用lz4 + zstd)"
@@ -84,7 +84,7 @@ on:
        options:
           - 'On'
           - 'Off'
-       default: 'Off'
+       default: 'On'
        
       bbr:
        description: "是否启用bbr算法(优化上行数据, 对手机日用无太大意义甚至可能负优化)"
@@ -205,8 +205,8 @@ jobs:
           repo init -u https://github.com/Xiaomichael/kernel_manifest.git -b refs/heads/oneplus/${{ github.event.inputs.CPU }} -m ${{ github.event.inputs.FEIL }}.xml --depth=1
           echo "🔄 同步代码库(使用$(nproc --all)线程)..."
           repo sync -c -j$(nproc --all) --no-tags --no-clone-bundle --force-sync
-          
-          echo "Kernel version:-${{ github.event.inputs.ANDROID_VERSION }}-oki-xiaoxiaow"
+          echo "Kernel version:-${{ github.event.inputs.ANDROID_VERSION }}-o-ee329aaa5afb4"
+
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           sed -i 's/ -dirty//g' kernel_platform/common/scripts/setlocalversion
@@ -215,48 +215,30 @@ jobs:
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' kernel_platform/common/scripts/setlocalversion
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' kernel_platform/msm-kernel/scripts/setlocalversion
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' kernel_platform/external/dtc/scripts/setlocalversion
-          sed -i '$s|echo "\$res"|echo "-${{ github.event.inputs.ANDROID_VERSION }}-oki-xiaoxiaow"|' kernel_platform/common/scripts/setlocalversion            
-          sed -i '$s|echo "\$res"|echo "-${{ github.event.inputs.ANDROID_VERSION }}-oki-xiaoxiaow"|' kernel_platform/msm-kernel/scripts/setlocalversion
-          sed -i '$s|echo "\$res"|echo "-${{ github.event.inputs.ANDROID_VERSION }}-oki-xiaoxiaow"|' kernel_platform/external/dtc/scripts/setlocalversion
+          sed -i '$s|echo "\$res"|echo "-${{ github.event.inputs.ANDROID_VERSION }}-o-ee329aaa5afb4"|' kernel_platform/common/scripts/setlocalversion
+          sed -i '$s|echo "\$res"|echo "-${{ github.event.inputs.ANDROID_VERSION }}-o-ee329aaa5afb4"|' kernel_platform/msm-kernel/scripts/setlocalversion
+          sed -i '$s|echo "\$res"|echo "-${{ github.event.inputs.ANDROID_VERSION }}-o-ee329aaa5afb4"|' kernel_platform/external/dtc/scripts/setlocalversion
 
           echo "✅ 内核配置完成"
 
       # ====================== 内核定制阶段 ======================
-
-      - name: "⚡ Setup Baseband-guard | 配置 Baseband-guard"
-        if: ${{ github.event.inputs.bbg == 'On' && github.event.inputs.KPM == 'Off' }}
+      - name: "⚡ Setup SukiSU Ultra | 配置SukiSU Ultra"
         run: |
-          set -e
-          cd kernel_workspace/kernel_platform/common
-          curl -sSL https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh -o setup.sh
-          bash setup.sh     
-              
-      - name: "⚡ Setup SukiSU Ultra | 配置 SukiSU Ultra"
-        run: |
-          echo "🛠️ 正在设置SukiSU Ultra..."
-          mkdir -p kernel_workspace/kernel_platform
-          
           cd kernel_workspace/kernel_platform
-          # 下载并执行设置脚本
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/susfs-main/kernel/setup.sh" | bash -s susfs-main
-          
-          cd KernelSU
-          echo "⬇️ 下载KernelSU设置工具..."
-          curl -L -o sukisu_setup.bin https://github.com/Xiaomichael/OnePlus-Actions/raw/Build/script/sukisu_setup.bin
-          chmod +x sukisu_setup.bin
-          
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+          cd ./KernelSU
+          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10700)
           # 验证Makefile存在
           if [ ! -f "kernel/Makefile" ]; then
             echo "❌ 错误：缺少kernel/Makefile"
             ls -la
             exit 1
           fi
-          
-          ./sukisu_setup.bin
-          rm -rf ./sukisu_setup.bin
-          
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+          export KSU_VERSION=$KSU_VERSION
+          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
           echo "✅ SukiSU Ultra配置完成"
-          
+
       - name: "🔧 Setup SUSFS | 配置 SUSFS"
         run: |
           cd kernel_workspace
@@ -264,7 +246,7 @@ jobs:
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
           git clone https://github.com/Xiaomichael/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
-          
+
           cd kernel_platform
           echo "📝 复制补丁文件..."
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
@@ -330,6 +312,7 @@ jobs:
           
           # Add SUSFS configuration settings
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -344,7 +327,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-          if [ "${{ github.event.inputs.bbg }}" == "On" ] && [ "${{ github.event.inputs.KPM }}" == "Off" ]; then
+          if [ "${{ github.event.inputs.bbg }}" == "On" ]; then
             echo "⚡ 启用BBG防格机..."
             echo 'CONFIG_BBG=y' >> ./common/arch/arm64/configs/gki_defconfig
             echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> ./common/arch/arm64/configs/gki_defconfig
